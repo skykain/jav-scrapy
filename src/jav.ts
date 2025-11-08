@@ -17,8 +17,10 @@ import { ErrorHandler } from './utils/errorHandler';
 import { getRandomDelay, getExponentialBackoffDelay } from './core/constants';
 import { delayManager, DelayType } from './utils/delayManager';
 
-// 版本号
-const version = '0.8.0';
+// 版本号 - 从package.json动态读取
+const packageJsonPath = path.join(__dirname, '..', 'package.json');
+const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+const version = packageJson.version;
 
 
 program

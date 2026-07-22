@@ -22,11 +22,11 @@ import chalk from 'chalk'; // 引入 chalk 库用于美化输出
 import * as path from 'path';
 import { DEFAULT_CONFIG, BASE_URL, DEFAULT_HEADERS } from './constants';
 import { ErrorHandler } from '../utils/errorHandler';
+import { getAntiBlockUrlsPath } from './paths';
 
 
 class ConfigManager {
     private config: Config;
-    private configPath: string;
 
     constructor() {
         this.config = {
@@ -43,24 +43,14 @@ class ConfigManager {
             timeout: DEFAULT_CONFIG.timeout,
             search: null,
             base: null,
-            nomag: false,
             allmag: false,
             nopic: false,
             limit: 0,
             delay: 2, // 添加默认延迟参数
             strictSSL: DEFAULT_CONFIG.strictSSL, // 是否严格验证SSL证书
+            format: 'json', // #95 默认输出 JSON
             proxy: undefined,
-            useCloudflareBypass: false, // 默认不启用 Cloudflare 绕过
-            // Puppeteer池配置 - 优化内存使用
-            puppeteerPool: {
-                maxSize: Math.max(1, Math.min(2, Math.floor(DEFAULT_CONFIG.parallel / 2))), // 限制最大实例数，减少内存占用
-                maxIdleTime: 3 * 60 * 1000, // 3分钟（从5分钟降低）
-                healthCheckInterval: 30 * 1000, // 30秒
-                requestTimeout: 60000, // 1分钟
-                retryAttempts: 3
-            }
         };
-        this.configPath = `${process.env.HOME}/.config.json`; // 配置文件路径
     }
 
     public async updateFromProgram(program: Command): Promise<void> {
@@ -134,9 +124,6 @@ class ConfigManager {
                 // 保持原有Referer
             }
         }
-        if (program.opts().nomag !== undefined && program.opts().nomag !== null) {
-            this.config.nomag = program.opts().nomag;
-        }
         if (program.opts().allmag !== undefined && program.opts().allmag !== null) {
             this.config.allmag = program.opts().allmag;
         }
@@ -150,10 +137,17 @@ class ConfigManager {
             this.config.delay = parseInt(program.opts().delay);
         }
 
-        // 处理 Cloudflare 绕过选项
-        if (program.opts().cloudflare) {
-            this.config.useCloudflareBypass = true;
-            logger.info('已启用 Cloudflare 绕过功能');
+        // #95 输出格式选项
+        const rawFormat = program.opts().format;
+        if (typeof rawFormat === 'string') {
+            const normalized = rawFormat.toLowerCase();
+            if (normalized === 'json' || normalized === 'csv') {
+                this.config.format = normalized;
+                logger.info(`输出格式: ${this.config.format}`);
+            } else {
+                logger.warn(`未知的输出格式 "${rawFormat}"，回退到 json。可选值: json | csv`);
+                this.config.format = 'json';
+            }
         }
 
         // 处理SSL验证选项（--no-strict-ssl）
@@ -170,27 +164,15 @@ class ConfigManager {
         }
     }
 
-    public updateConfig(newConfig: Partial<Config>): void {
-        logger.debug(`正在保存配置到: ${this.configPath}`);
-        this.config = { ...this.config, ...newConfig };
-        try {
-            fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2));
-            logger.debug('配置保存成功');
-        } catch (error) {
-            ErrorHandler.handleFileError(error, '更新配置文件');
-        }
-    }
-
     public getConfig() {
         return this.config;
     }
 
     private loadAntiBlockUrls(): string[] {
-        const homeDir = (process.platform === 'win32' ? process.env.USERPROFILE : process.env.HOME) || process.cwd();
-        const antiblockUrlsFilePath = path.join(homeDir, '.jav-scrapy-antiblock-urls.json');
+        const filePath = getAntiBlockUrlsPath();
         try {
-            if (fs.existsSync(antiblockUrlsFilePath)) {
-                const data = fs.readFileSync(antiblockUrlsFilePath, 'utf-8');
+            if (fs.existsSync(filePath)) {
+                const data = fs.readFileSync(filePath, 'utf-8');
                 const parsedUrls = JSON.parse(data);
                 if (Array.isArray(parsedUrls) && parsedUrls.length > 0) {
                     return parsedUrls;

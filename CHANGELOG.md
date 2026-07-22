@@ -1,3 +1,105 @@
+## <small>1.3.2 (2026-06-08)</small>
+
+* fix(deps): 升级 axios 至 1.17.0 并修复传递依赖安全漏洞 ([6cff223](https://github.com/raawaa/jav-scrapy/commit/6cff223))
+
+
+
+## <small>1.3.1 (2026-06-08)</small>
+
+* fix(core): 修复 star 页面分页 URL 格式错误及翻页死循环问题 ([7f1bf28](https://github.com/raawaa/jav-scrapy/commit/7f1bf28))
+* docs: 补充 crawl 命令缺失的选项说明（base、search、cookies、strict-ssl） ([3f14808](https://github.com/raawaa/jav-scrapy/commit/3f14808))
+
+
+
+## 1.3.0 (2026-06-08)
+
+* feat(cli): 添加 upgrade 命令和 install.sh 安装脚本，重命名 update 为 refresh ([45b9a0e](https://github.com/raawaa/jav-scrapy/commit/45b9a0e))
+* fix(ci): 修复 GitHub Actions Release 创建的 --verify-tag 验证失败 ([5e9b273](https://github.com/raawaa/jav-scrapy/commit/5e9b273))
+
+
+
+## 1.2.0 (2026-05-30)
+
+* chore: 取消追踪构建产物 dist/*.map ([c44dd44](https://github.com/raawaa/jav-scrapy/commit/c44dd44))
+* feat(cli): 为 update 命令添加 --proxy 代理支持并优化 README 文档 ([3e3b51e](https://github.com/raawaa/jav-scrapy/commit/3e3b51e))
+* feat(cli): 改进用户交互体验 ([be12b10](https://github.com/raawaa/jav-scrapy/commit/be12b10))
+* feat(core): 更新 User-Agent、修复双重试机制，添加测试体系 ([642b2ed](https://github.com/raawaa/jav-scrapy/commit/642b2ed))
+* feat(core): 集成 koonjs 绕过 Cloudflare TLS 指纹检测并清理废弃框架 ([6679c01](https://github.com/raawaa/jav-scrapy/commit/6679c01))
+* refactor(core): 移除 Puppeteer 相关代码和依赖 ([94f193a](https://github.com/raawaa/jav-scrapy/commit/94f193a))
+
+
+
+## 1.0.0 (2025-11-08)
+
+
+
+
+## 1.0.0 (2025-11-08)
+
+
+
+
+## [1.1.1](https://github.com/raawaa/jav-scrapy/compare/v1.1.0...v1.1.1) (2025-11-08)
+
+
+### Bug Fixes
+
+* **install:** 移除prepare脚本 ([35e781a](https://github.com/raawaa/jav-scrapy/commit/35e781a78c126630a0762605473dd7e50b292eb1))
+
+# [1.1.0](https://github.com/raawaa/jav-scrapy/compare/v1.0.1...v1.1.0) (2025-11-08)
+
+
+### Features
+
+* 添加预编译版本支持并优化构建流程 ([acc6078](https://github.com/raawaa/jav-scrapy/commit/acc6078f867bef372fd4019b80d4f5c09d7fd203))
+
+## [1.0.1](https://github.com/raawaa/jav-scrapy/compare/v1.0.0...v1.0.1) (2025-11-08)
+
+
+### Bug Fixes
+
+* **ci-cd:** 修复自动发布流程中的文件同步问题 ([15070f7](https://github.com/raawaa/jav-scrapy/commit/15070f77d12e012ca998b78d4fef0f12085089fd))
+
+# [1.0.0](https://github.com/raawaa/jav-scrapy/compare/v0.8.5...v1.0.0) (2025-11-08)
+
+
+### Bug Fixes
+
+* **ci-cd:** add permissions to GitHub release workflow ([40e50a0](https://github.com/raawaa/jav-scrapy/commit/40e50a08afd4ca9b115f677bb13d565e4ddd2410))
+* **ci-cd:** resolve npm ci failure in GitHub workflow ([11a0574](https://github.com/raawaa/jav-scrapy/commit/11a05745c507a437a7d803d897eb6612567f7ee2))
+* **ci:** 修复发布流程中的workflow问题 ([d47c6e9](https://github.com/raawaa/jav-scrapy/commit/d47c6e94e30fba7b931d35b774cc10b7355efe51))
+* **ci:** 修复发布流程中的安装脚本和版本管理问题 ([b241f3a](https://github.com/raawaa/jav-scrapy/commit/b241f3a4ff8e412af1cb0ffb23b39200654ba34e))
+* **workflows:** 使用@yao-pkg/pkg替换pkg并优化二进制验证逻辑 ([28cd8da](https://github.com/raawaa/jav-scrapy/commit/28cd8dacbf063c08b65eed93852ee39a27d7d249))
+* **workflows:** 改进二进制构建流程并添加重试机制 ([cfa5f35](https://github.com/raawaa/jav-scrapy/commit/cfa5f35677ffdc412c036d49203d284fbe648027))
+* **workflows:** 更新发布工作流配置和文档 ([65b5a90](https://github.com/raawaa/jav-scrapy/commit/65b5a9008f386da01f6292856fc6d0c072b0a059))
+* **workflow:** 修复workflow没有完全执行问题 ([f2f6407](https://github.com/raawaa/jav-scrapy/commit/f2f6407e56e91dffa0e2e1bd8a0e77f6a2e83096))
+* **workflow:** 改进发布分析步骤并添加调试输出 ([7892b83](https://github.com/raawaa/jav-scrapy/commit/7892b83a3010e7b835ba8c39d82f6a55c7ff7a47))
+* **workflow:** 添加analyze-release作业的输出变量 ([33a6d98](https://github.com/raawaa/jav-scrapy/commit/33a6d986be5850e381699d9507f8119a5e616cf3))
+* **workflow:** 简化发布工作流程并移除调试步骤 ([144167c](https://github.com/raawaa/jav-scrapy/commit/144167c153b7ea104e481645f12186021b7d5da8))
+* **workflow:** 简化跨平台二进制文件验证逻辑 ([3a3771e](https://github.com/raawaa/jav-scrapy/commit/3a3771e869e1cf147c2801ac5e437043f95769f4))
+* 修复GitHub Actions输出变量的引号问题 ([540d920](https://github.com/raawaa/jav-scrapy/commit/540d92027179fa4975fe3edb43d1092a77420147))
+* 修复package-lock.json不同步问题 ([c81c0ba](https://github.com/raawaa/jav-scrapy/commit/c81c0ba354bc37940b3cd92a98a2c54fefbb8302))
+* 将 pkg 替换为 @yao-pkg/pkg 以解决构建问题 ([16dfa38](https://github.com/raawaa/jav-scrapy/commit/16dfa387b612eef54e057916bb2f6102a0b3df70))
+* 更新lock ([5c66cdf](https://github.com/raawaa/jav-scrapy/commit/5c66cdf3134c0d5165c74451585c540c660870fd))
+
+
+### Features
+
+* **ci-cd:** add automatic GitHub release creation ([3dc9f36](https://github.com/raawaa/jav-scrapy/commit/3dc9f36a9c14c1d69f01d8a7daa3877060d65301))
+* **packaging:** optimize npm package for global installation ([5082c4d](https://github.com/raawaa/jav-scrapy/commit/5082c4d19222a1237f7e044c117bfb8a35b5ee40))
+* 集成 speckit 功能规格管理系统 ([980223b](https://github.com/raawaa/jav-scrapy/commit/980223b0eeb6e03ae1c2adc00a362a9c666a7f06))
+
+
+### BREAKING CHANGES
+
+* **ci-cd:** → major version (0.8.4 → 1.0.0)
+- Auto-generates changelog and release notes
+- Eliminates manual release process
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
 ## [0.8.5](https://github.com/raawaa/jav-scrapy/compare/v0.8.4...v0.8.5) (2025-11-05)
 
 

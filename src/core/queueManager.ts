@@ -1,23 +1,13 @@
 import async from 'async';
-import { FilmData, DetailPageTask, IndexPageTask, Metadata, MagnetResult } from '../types/interfaces';
+import { FilmData, DetailPageTask, IndexPageTask, Metadata } from '../types/interfaces';
 import { Config } from '../types/interfaces';
 import logger from './logger';
 import RequestHandler from './requestHandler';
 import FileHandler from './fileHandler';
-import Parser from './parser';
+import { parsePageLinks } from './parser';
+import DetailPagePipeline from './pipelines/detailPage';
 import { ErrorHandler } from '../utils/errorHandler';
-import { delayManager, DelayType } from '../utils/delayManager';
-import { PuppeteerPool } from './puppeteerPool';
-import { ResourceMonitor } from './resourceMonitor';
 
-
-export interface QueueTask {
-    execute(): Promise<void>;
-}
-
-export interface QueueHandler {
-    handle(task: any): Promise<void>;
-}
 
 export enum QueueEventType {
     INDEX_PAGE_START = 'index_page_start',
@@ -43,8 +33,7 @@ class QueueManager {
     private config: Config;
     private requestHandler: RequestHandler;
     private fileHandler: FileHandler;
-    private puppeteerPool: PuppeteerPool;
-    private resourceMonitor: ResourceMonitor | null = null;
+    private detailPagePipeline: DetailPagePipeline;
 
     // 队列相关
     private fileWriteQueue: async.QueueObject<FilmData> | null = null;
@@ -68,35 +57,9 @@ class QueueManager {
     */
     constructor(config: Config) {
         this.config = config;
-
-        // 初始化Puppeteer池（如果需要Cloudflare绕过）
-        if (config.useCloudflareBypass) {
-            this.puppeteerPool = PuppeteerPool.getInstance({
-                maxSize: Math.max(2, Math.floor(config.parallel / 1.5)), // 根据并发数动态调整
-                maxIdleTime: 5 * 60 * 1000, // 5分钟
-                healthCheckInterval: 30 * 1000, // 30秒
-                requestTimeout: 60000, // 1分钟
-                retryAttempts: 3
-            });
-
-            // 启动资源监控
-            this.resourceMonitor = ResourceMonitor.getInstance(this.puppeteerPool);
-            this.resourceMonitor.startMonitoring(30000); // 30秒监控间隔
-
-            logger.info('QueueManager: 已启用Puppeteer池和资源监控');
-        } else {
-            // 仍然创建池实例以保持兼容性，但不启用监控
-            this.puppeteerPool = PuppeteerPool.getInstance({
-                maxSize: 1,
-                maxIdleTime: 10 * 60 * 1000,
-                healthCheckInterval: 60 * 1000,
-                requestTimeout: 60000,
-                retryAttempts: 3
-            });
-        }
-
         this.requestHandler = new RequestHandler(config);
-        this.fileHandler = new FileHandler(config.output);
+this.detailPagePipeline = new DetailPagePipeline(this.requestHandler);
+        this.fileHandler = new FileHandler(config.output, { format: config.format });
 
         // 启动队列状态监控
         this.startQueueMonitoring();
@@ -139,7 +102,7 @@ class QueueManager {
                     // 传递正确的Referer信息给downloadImage方法
                     await this.requestHandler.downloadImage(imageUrl, metadata.title + '.jpg', baseUrl);
                     const downloadTime = Date.now() - startTime;
-                    logger.info(`QueueManager: [图片下载] 完成下载: ${metadata.title} (耗时: ${Math.round(downloadTime/1000)}s)`);
+                    logger.debug(`QueueManager: [图片下载] 完成下载: ${metadata.title} (耗时: ${Math.round(downloadTime/1000)}s)`);
 
                     // 延迟由外部管理器处理，任务完成后立即释放
                     logger.debug(`QueueManager: [图片下载] 任务完成: ${metadata.title}`);
@@ -181,7 +144,7 @@ class QueueManager {
                 try {
                     await this.fileHandler.writeFilmDataToFile(filmData);
                     const writeTime = Date.now() - startTime;
-                    logger.info(`QueueManager: [文件写入] 完成写入: ${filmData.title} (耗时: ${Math.round(writeTime/1000)}s)`);
+                    logger.debug(`QueueManager: [文件写入] 完成写入: ${filmData.title} (耗时: ${Math.round(writeTime/1000)}s)`);
                 } catch (error) {
                     const failedTime = Date.now() - startTime;
                     logger.error(`QueueManager: [文件写入] 任务失败: ${filmData.title} (耗时: ${Math.round(failedTime/1000)}s), 错误: ${error instanceof Error ? error.message : String(error)}`);
@@ -209,16 +172,8 @@ class QueueManager {
         if (!this.detailPageQueue) {
             logger.debug('QueueManager: 创建详情页处理队列');
 
-            // 根据资源状态动态调整并发数
+            // 详情页使用 0.75x 基础并发
             let detailPageConcurrency = Math.max(1, Math.floor(this.config.parallel * 0.75));
-            if (this.config.useCloudflareBypass && this.resourceMonitor) {
-                const poolStats = this.puppeteerPool.getStats();
-                // 如果Puppeteer池使用率过高，进一步降低并发
-                if (poolStats.inUse >= poolStats.total * 0.8) {
-                    detailPageConcurrency = Math.max(1, Math.floor(detailPageConcurrency * 0.6));
-                    logger.debug(`QueueManager: Puppeteer池使用率高，降低详情页队列并发数至 ${detailPageConcurrency}`);
-                }
-            }
 
             logger.debug(`QueueManager: 详情页队列并发数: ${detailPageConcurrency}`);
             this.detailPageQueue = async.queue(async (task: DetailPageTask) => {
@@ -226,60 +181,19 @@ class QueueManager {
                 const startTime = Date.now();
                 this.lastTaskStartTimes.set(taskKey, startTime);
 
-                logger.debug(`QueueManager: [详情页] 开始处理: ${task.link}`);
                 try {
                     this.emit({ type: QueueEventType.DETAIL_PAGE_START, data: { link: task.link } });
-                    logger.debug(`QueueManager: [详情页] 触发页面请求事件: ${task.link}`);
-
-                    logger.debug(`QueueManager: [详情页] 开始请求页面内容: ${task.link}`);
-                    const response = await this.requestHandler.getPage(task.link);
-                    const requestTime = Date.now() - startTime;
-                    logger.debug(`QueueManager: [详情页] 页面请求完成: ${task.link} (耗时: ${Math.round(requestTime/1000)}s)`);
-
-                    if (response?.body) {
-                        logger.debug(`QueueManager: [详情页] 成功获取页面内容，长度: ${response.body.length}`);
-
-                        logger.debug(`QueueManager: [详情页] 开始解析元数据: ${task.link}`);
-                        const metadata = Parser.parseMetadata(response.body);
-                        const parseTime = Date.now() - startTime;
-                        logger.debug(`QueueManager: [详情页] 元数据解析完成: ${metadata.title} (总耗时: ${Math.round(parseTime/1000)}s)`);
-
-                        logger.debug(`QueueManager: [详情页] 开始获取磁力链接: ${metadata.title}`);
-                        const magnetFetchStart = Date.now();
-                        const magnetResult = await this.requestHandler.fetchMagnet(metadata);
-                        const magnetFetchTime = Date.now() - magnetFetchStart;
-
-                        if (magnetResult) {
-                            logger.info(`QueueManager: [详情页] 磁力链接获取成功: ${metadata.title} (耗时: ${Math.round(magnetFetchTime/1000)}s)`);
-                        } else {
-                            logger.warn(`QueueManager: [详情页] 磁力链接获取失败: ${metadata.title}`);
-                        }
-
-                        logger.debug(`QueueManager: [详情页] 开始解析影片数据: ${metadata.title}`);
-                        const filmData = Parser.parseFilmData(metadata, task.link);
-                        // 添加结构化的磁力链接数据
-                        if (magnetResult?.magnetLinks) {
-                            filmData.magnetLinks = magnetResult.magnetLinks;
-                        }
-                        logger.debug(`QueueManager: [详情页] 影片数据解析完成: ${metadata.title}`);
-
+                    const result = await this.detailPagePipeline.process(task.link);
+                    if (result) {
                         this.emit({
                             type: QueueEventType.DETAIL_PAGE_PROCESSED,
-                            data: { filmData, metadata }
+                            data: result
                         });
-
-                        logger.debug(`QueueManager: [详情页] 任务处理完成: ${task.link}`);
-                    } else {
-                        logger.warn(`QueueManager: [详情页] 页面响应为空: ${task.link}`);
                     }
-
-                    // 延迟由外部管理器处理，任务完成后立即释放
-                    logger.debug(`QueueManager: [详情页] 任务完成: ${task.link}`);
-
                 } catch (error) {
                     const failedTime = Date.now() - startTime;
                     logger.error(`QueueManager: [详情页] 任务失败: ${task.link} (耗时: ${Math.round(failedTime/1000)}s), 错误: ${error instanceof Error ? error.message : String(error)}`);
-                    ErrorHandler.handleGenericError(error, `处理详情页 ${task.link}`);
+                    ErrorHandler.handleError(error, `处理详情页 ${task.link}`);
                     // 不中断队列处理，继续处理下一个任务
                 } finally {
                     this.lastTaskStartTimes.delete(taskKey);
@@ -304,16 +218,8 @@ class QueueManager {
         if (!this.indexPageQueue) {
             logger.debug('QueueManager: 创建索引页队列');
 
-            // 根据资源状态动态调整并发数
+            // 索引页使用基础并发
             let concurrency = this.config.parallel;
-            if (this.config.useCloudflareBypass && this.resourceMonitor) {
-                const poolStats = this.puppeteerPool.getStats();
-                // 如果Puppeteer池使用率过高，降低并发
-                if (poolStats.inUse >= poolStats.total * 0.8) {
-                    concurrency = Math.max(1, Math.floor(concurrency * 0.7));
-                    logger.debug(`QueueManager: Puppeteer池使用率高，降低索引页队列并发数至 ${concurrency}`);
-                }
-            }
 
             logger.debug(`QueueManager: 索引页队列并发数: ${concurrency}`);
             this.indexPageQueue = async.queue(async (task: IndexPageTask) => {
@@ -342,7 +248,7 @@ class QueueManager {
                     }
 
                     logger.debug(`QueueManager: [索引页] 开始解析页面链接: ${task.url}`);
-                    const links: string[] = Parser.parsePageLinks(response.body);
+                    const links: string[] = parsePageLinks(response.body);
                     const parseTime = Date.now() - startTime;
                     logger.debug(`QueueManager: [索引页] 页面解析完成: ${task.url}，找到 ${links.length} 条链接 (总耗时: ${Math.round(parseTime/1000)}s)`);
 
@@ -435,20 +341,6 @@ class QueueManager {
         };
     }
 
-    /**
-     * 检查是否所有队列都已完成
-     * @returns {boolean} 如果所有队列都已完成返回 true
-     */
-    public areAllQueuesFinished(): boolean {
-        const stats = this.getQueueStats();
-        return (
-            stats.indexPageQueue.waiting === 0 && stats.indexPageQueue.running === 0 &&
-            stats.detailPageQueue.waiting === 0 && stats.detailPageQueue.running === 0 &&
-            stats.fileWriteQueue.waiting === 0 && stats.fileWriteQueue.running === 0 &&
-            stats.imageDownloadQueue.waiting === 0 && stats.imageDownloadQueue.running === 0
-        );
-    }
-
     private emit(event: QueueEvent): void {
         const handlers = this.eventHandlers.get(event.type);
         handlers?.forEach(handler => handler(event));
@@ -475,9 +367,9 @@ class QueueManager {
                 }
             }
 
-            // 每30秒输出一次状态报告
+            // 每30秒输出一次状态报告（仅调试级别）
             if (runningTasks > 0 || longRunningTasks.length > 0) {
-                logger.info(`QueueManager: [心跳] 队列状态 - 索引(等待:${stats.indexPageQueue.waiting}, 运行:${stats.indexPageQueue.running}) ` +
+                logger.debug(`QueueManager: [心跳] 队列状态 - 索引(等待:${stats.indexPageQueue.waiting}, 运行:${stats.indexPageQueue.running}) ` +
                     `详情(等待:${stats.detailPageQueue.waiting}, 运行:${stats.detailPageQueue.running}) ` +
                     `文件(等待:${stats.fileWriteQueue.waiting}, 运行:${stats.fileWriteQueue.running}) ` +
                     `图片(等待:${stats.imageDownloadQueue.waiting}, 运行:${stats.imageDownloadQueue.running}) ` +
@@ -497,10 +389,6 @@ class QueueManager {
     public shutdown(): void {
         logger.info('QueueManager: 开始关闭队列管理器...');
         this.isShuttingDown = true;
-
-        // 关闭延迟管理器
-        logger.debug('QueueManager: 正在关闭延迟管理器...');
-        this.interruptAllDelays();
 
         if (this.queueStatsInterval) {
             clearInterval(this.queueStatsInterval);
@@ -533,45 +421,6 @@ class QueueManager {
         }
 
         logger.info('QueueManager: 队列管理器关闭完成');
-    }
-
-    /**
-     * 创建延迟任务
-     */
-    public async createDelay(type: DelayType, id?: string): Promise<void> {
-        return delayManager.createDelay(type, id);
-    }
-
-    /**
-     * 获取延迟统计信息
-     */
-    public getDelayStats(): {
-        total: number;
-        byType: Record<DelayType, number>;
-        averageRemainingTime: number;
-    } {
-        return delayManager.getDelayStats();
-    }
-
-    /**
-     * 检查是否有活跃的延迟
-     */
-    public hasActiveDelays(): boolean {
-        return delayManager.hasActiveDelays();
-    }
-
-    /**
-     * 等待所有延迟完成
-     */
-    public async waitForDelays(): Promise<void> {
-        await delayManager.waitForAllDelays();
-    }
-
-    /**
-     * 中断所有延迟
-     */
-    public interruptAllDelays(): number {
-        return delayManager.interruptAllDelays();
     }
 
     /**

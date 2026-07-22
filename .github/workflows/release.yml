@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Get tag version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Verify dist directory exists
+        run: |
+          if [ ! -d "dist" ]; then
+            echo "Error: dist directory was not created during build"
+            exit 1
+          fi
+          echo "Dist directory contents:"
+          ls -la dist/
+
+      - name: Package tarball for npm install
+        run: |
+          mkdir -p _release/package
+          cp -r dist package.json README.md LICENSE _release/package/ 2>/dev/null || true
+          cd _release && tar czf "../jav-scrapy-v${{ env.VERSION }}.tgz" package/
+          echo "Tarball created: jav-scrapy-v${{ env.VERSION }}.tgz"
+          ls -lh "../jav-scrapy-v${{ env.VERSION }}.tgz"
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > /tmp/release-notes.md << EOF
+          ## [${{ env.VERSION }}] - $(date +'%Y-%m-%d')
+
+          Please see [CHANGELOG.md](./CHANGELOG.md) for detailed release notes.
+          EOF
+          gh release create "${{ github.ref }}" \
+            --title "Release v${{ env.VERSION }}" \
+            --notes-file /tmp/release-notes.md \
+            "jav-scrapy-v${{ env.VERSION }}.tgz"
